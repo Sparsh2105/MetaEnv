@@ -1,0 +1,121 @@
+name: job-application-rl
+version: "1.0.0"
+description: >
+  A simulated reinforcement learning environment where an LLM agent
+  navigates a job application process under time pressure, recruiter chaos,
+  and platform-specific constraints.
+
+api:
+  base_url: http://localhost:3000
+  endpoints:
+    - method: GET
+      path: /state
+      description: Returns the current observation (what the agent can see)
+    - method: POST
+      path: /reset
+      description: Resets the episode
+      body:
+        difficulty: "easy | medium | hard"
+    - method: POST
+      path: /step
+      description: Takes one action and returns the result
+      body:
+        action: string (required)
+        tailored_skills: string[] (optional, for submit_application)
+    - method: GET
+      path: /actions
+      description: Lists all valid actions with descriptions
+
+observation_space:
+  job_title: string
+  company: string
+  platform: "workday | 1click | linkedin_easy_apply"
+  job_description_keywords: string[]
+  day: integer
+  deadline: integer
+  days_remaining: integer
+  referral_requested: boolean
+  ghosted: boolean
+  applied: boolean
+  application_submitted: boolean
+  recruiter_event: "null | { type: string, message: string }"
+  recruiter_replied_pending: boolean
+  got_interview: boolean
+  done: boolean
+  terminal_reason: "null | interview_secured | applied_with_referral | applied_cold | deadline_missed"
+  steps_taken: integer
+  total_reward: float
+
+action_space:
+  - name: request_referral
+    description: Request a referral from a contact
+    time_cost: 1
+    side_effects:
+      - 30% chance of entering ghosted state (configurable per difficulty)
+
+  - name: reply_email
+    description: Reply to a pending recruiter event
+    time_cost: 1
+    constraints:
+      - Must be used immediately when recruiter_replied_pending is true
+      - Failure to do so incurs -1.0 reward penalty
+
+  - name: apply_workday
+    description: Submit application via Workday portal
+    time_cost: 3
+    constraints:
+      - Only valid when platform == "workday"
+
+  - name: apply_1click
+    description: Submit application via 1-click (LinkedIn Easy Apply, etc.)
+    time_cost: 1
+    constraints:
+      - Not valid when platform == "workday"
+
+  - name: submit_application
+    description: Finalize and submit the application
+    time_cost: 1
+    optional_payload:
+      tailored_skills: "string[] — skills matching job_description_keywords for bonus reward"
+    constraints:
+      - Must call apply_workday or apply_1click first
+
+  - name: wait
+    description: Skip this step (time still advances)
+    time_cost: 1
+
+reward_structure:
+  step_penalty: -0.01
+  missed_recruiter_event: -1.0
+  wrong_platform_action: -0.1
+  redundant_action: -0.05
+  recruiter_reply_bonus: +0.3
+
+terminal_rewards:
+  interview_secured: 1.0
+  applied_with_referral: 0.5
+  applied_cold: 0.2
+  deadline_missed: 0.0
+
+tailoring_multipliers:
+  ">=80% keyword match": 2.0x
+  ">=50% keyword match": 1.5x
+  "no tailoring": 1.0x
+
+difficulty_levels:
+  easy:
+    deadline: 15
+    platform: 1click
+    ghosting_probability: 0
+    recruiter_curveball_probability: 0
+  medium:
+    deadline: 10
+    platform: linkedin_easy_apply
+    ghosting_probability: 0.3
+    recruiter_curveball_probability: 0.2
+  hard:
+    deadline: 7
+    platform: workday
+    ghosting_probability: 0.5
+    recruiter_curveball_probability: 0.35
+    require_tailoring: true
