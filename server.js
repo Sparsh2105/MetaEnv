@@ -10,11 +10,18 @@
  */
 
 const express = require("express");
+const cors = require("cors");
+const path = require("path");
 const { Environment } = require("./env/environment");
 const { TASKS } = require("./env/tasks");
 
 const app = express();
+app.use(cors());
 app.use(express.json());
+
+// Serve built frontend (production)
+const FRONTEND_DIST = path.join(__dirname, "frontend", "dist");
+app.use(express.static(FRONTEND_DIST));
 
 // Single shared environment instance (stateful per session)
 let env = new Environment(TASKS.medium);
@@ -90,8 +97,17 @@ app.get("/actions", (req, res) => {
   });
 });
 
+// Fallback: serve frontend for any non-API route
+app.get("*", (req, res) => {
+  const indexPath = path.join(FRONTEND_DIST, "index.html");
+  res.sendFile(indexPath, (err) => {
+    if (err) res.status(404).json({ error: "Frontend not built. Run: cd frontend && npm run build" });
+  });
+});
+
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log(`RL Environment API running on http://localhost:${PORT}`);
+  console.log(`Frontend served at http://localhost:${PORT}`);
   console.log(`Endpoints: GET /state | POST /reset | POST /step | GET /actions`);
 });

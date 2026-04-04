@@ -1,33 +1,46 @@
 """
 inference.py
-Groq-powered agent that plays the job application RL environment.
+OpenAI-client-based agent for the Job Application RL Environment.
+
+Reads credentials from environment variables:
+  API_BASE_URL  — LLM API endpoint (default: https://api.openai.com/v1)
+  MODEL_NAME    — model identifier  (default: gpt-4o-mini)
+  HF_TOKEN      — Hugging Face / API key
+
+Emits structured stdout logs in [START] / [STEP] / [END] format.
 
 Usage:
-    python inference.py --difficulty medium
+    export API_BASE_URL=https://api.openai.com/v1
+    export MODEL_NAME=gpt-4o-mini
+    export HF_TOKEN=sk-...
+    python inference.py --api-url http://localhost:3000 --difficulty medium
 """
 
 import requests
 import json
 import os
 import argparse
-from groq import Groq
+import time
+from openai import OpenAI
 
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+# --- Credentials from env ---
+API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
+MODEL_NAME   = os.getenv("MODEL_NAME",   "gpt-4o-mini")
+HF_TOKEN     = os.getenv("HF_TOKEN",     "")
 
-SYSTEM_PROMPT = """You are an AI agent playing a job application simulation game.
+client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
 
-Your goal: Secure an interview before the deadline.
+SYSTEM_PROMPT = """You are an AI agent playing a job application simulation.
+Goal: Secure an interview before the deadline.
 
-RULES:
-- Every step costs -0.01 reward (time penalty), so act fast
-- If recruiter_replied_pending is true, you MUST use reply_email or face -1.0 penalty
-- request_referral has a 30% chance of being ghosted
-- Platform matters: apply_workday costs 3 steps (only for platform=workday), apply_1click costs 1 step
-- After applying, call submit_application with tailored_skills matching job_description_keywords to double reward
+Rules:
+- If recruiter_replied_pending is true, you MUST use reply_email immediately or face -1.0 penalty
+- Platform matters: apply_workday costs 3 steps (only for platform=workday)
+- apply_1click costs 1 step and is NOT valid for workday platform
+- After applying, call submit_application with tailored_skills matching job_description_keywords for 2x reward
+- Every step costs -0.01 (time penalty), act efficiently
 
-SCORING: 1.0=interview | 0.5=applied with referral | 0.2=cold apply | 0.0=deadline missed
-
-Respond ONLY with valid JSON, no extra text:
+Respond ONLY with valid JSON (no extra text):
 {
   "action": "request_referral" | "reply_email" | "apply_workday" | "apply_1click" | "submit_application" | "wait",
   "tailored_skills": ["skill1", "skill2"],
@@ -37,7 +50,7 @@ tailored_skills only needed for submit_application."""
 
 
 def reset_env(api_url, difficulty):
-    resp = requests.post(f"{api_url}/reset", json={"difficulty": difficulty}, timeout=5)
+    resp = requests.post(f"{api_url}/reset", json={"difficulty": difficulty}, timeout=10)
     resp.raise_for_status()
     return resp.json()["observation"]
 
@@ -46,87 +59,133 @@ def send_action(api_url, action, tailored_skills=None):
     payload = {"action": action}
     if tailored_skills:
         payload["tailored_skills"] = tailored_skills
-    resp = requests.post(f"{api_url}/step", json=payload, timeout=5)
+    resp = requests.post(f"{api_url}/step", json=payload, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
 
-def ask_groq(obs):
+def ask_llm(obs):
     response = client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
+        model=MODEL_NAME,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Current state:\n{json.dumps(obs, indent=2)}\n\nWhat action do you take?"}
+            {"role": "user",   "content": f"Current state:\n{json.dumps(obs, indent=2)}\n\nWhat action do you take?"}
         ],
         temperature=0.7,
         max_tokens=300,
-        response_format={"type": "json_object"},
     )
-    return json.loads(response.choices[0].message.content)
+    content = response.choices[0].message.content
+    # Extract JSON from response
+    try:
+        return json.loads(content)
+    except json.JSONDecodeError:
+        import re
+        match = re.search(r'\{[\s\S]*\}', content)
+        if match:
+            return json.loads(match.group())
+        raise ValueError(f"Could not parse LLM response: {content}")
 
 
-def run_episode(api_url, difficulty="medium", max_steps=50):
-    print(f"\n{'='*60}")
-    print(f"Episode start — {difficulty.upper()} difficulty")
-    print(f"{'='*60}")
+def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
+    # [START] log
+    print(json.dumps({
+        "type": "START",
+        "episode": episode_num,
+        "difficulty": difficulty,
+        "model": MODEL_NAME,
+        "api_base": API_BASE_URL,
+    }))
 
     obs = reset_env(api_url, difficulty)
     step_count = 0
     final_score = 0.0
+    terminal_reason = "unknown"
 
     while not obs["done"] and step_count < max_steps:
         step_count += 1
-        print(f"\n--- Step {step_count} | Day {obs['day']}/{obs['deadline']} | Platform: {obs['platform']} ---")
-        print(f"Applied: {obs['applied']} | Referral: {obs['referral_requested']} | Ghosted: {obs['ghosted']}")
-
-        if obs.get("recruiter_event"):
-            print(f"🚨 RECRUITER: {obs['recruiter_event']['message']}")
 
         try:
-            parsed = ask_groq(obs)
+            parsed = ask_llm(obs)
             action = parsed["action"]
             tailored_skills = parsed.get("tailored_skills")
-            print(f"Action: {action} | Reason: {parsed.get('reasoning', '')}")
+            reasoning = parsed.get("reasoning", "")
 
             result = send_action(api_url, action, tailored_skills)
             obs = result["observation"]
-
-            print(f"Reward: {result['reward']:+.4f} | Total: {obs['total_reward']:+.4f}")
-
+            reward = result["reward"]
             info = result.get("info", {})
-            if info.get("warning"):
-                print(f"⚠️  {info['warning']}")
-            if info.get("penalty"):
-                print(f"❌ {info['penalty']}")
+
+            # [STEP] log — required format
+            print(json.dumps({
+                "type": "STEP",
+                "episode": episode_num,
+                "step": step_count,
+                "action": action,
+                "reasoning": reasoning,
+                "reward": reward,
+                "total_reward": obs["total_reward"],
+                "done": obs["done"],
+                "day": obs["day"],
+                "deadline": obs["deadline"],
+                "warning": info.get("warning"),
+                "penalty": info.get("penalty"),
+                "event": info.get("event"),
+            }))
+
             if info.get("final_grade"):
                 g = info["final_grade"]
                 final_score = g["score"]
-                print(f"\n{'='*60}")
-                print(f"DONE — Score: {final_score} | Reason: {g['breakdown']['terminal_reason']}")
-                print(f"Base: {g['breakdown']['base_score']} × {g['breakdown']['tailoring_multiplier']}x tailoring")
-                print(f"Steps: {g['breakdown']['steps_taken']}")
+                terminal_reason = info.get("terminal_reason", obs.get("terminal_reason", "unknown"))
 
-        except json.JSONDecodeError as e:
-            print(f"❌ JSON parse error: {e}")
-            break
         except Exception as e:
-            print(f"❌ Error: {e}")
+            print(json.dumps({
+                "type": "STEP",
+                "episode": episode_num,
+                "step": step_count,
+                "error": str(e),
+            }))
             break
 
-    if step_count >= max_steps:
-        print(f"\n⏱️  Max steps reached")
+    if step_count >= max_steps and not obs["done"]:
+        terminal_reason = "max_steps_reached"
+
+    # [END] log — required format
+    print(json.dumps({
+        "type": "END",
+        "episode": episode_num,
+        "difficulty": difficulty,
+        "score": final_score,
+        "total_reward": obs["total_reward"],
+        "steps_taken": step_count,
+        "terminal_reason": terminal_reason,
+    }))
 
     return final_score
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--api-url", default="http://localhost:3000")
+    parser = argparse.ArgumentParser(description="Job Application RL — Inference Script")
+    parser.add_argument("--api-url",    default=os.getenv("ENV_API_URL", "http://localhost:3000"))
     parser.add_argument("--difficulty", default="medium", choices=["easy", "medium", "hard"])
-    parser.add_argument("--episodes", type=int, default=1)
+    parser.add_argument("--episodes",   type=int, default=3)
     args = parser.parse_args()
 
-    for ep in range(args.episodes):
-        if args.episodes > 1:
-            print(f"\n{'#'*60}\nEPISODE {ep + 1}/{args.episodes}\n{'#'*60}")
-        run_episode(args.api_url, args.difficulty)
+    if not HF_TOKEN:
+        print(json.dumps({"type": "ERROR", "message": "HF_TOKEN env var not set"}))
+        exit(1)
+
+    all_scores = []
+    for ep in range(1, args.episodes + 1):
+        score = run_episode(args.api_url, args.difficulty, episode_num=ep)
+        all_scores.append(score)
+        time.sleep(0.5)
+
+    avg = sum(all_scores) / len(all_scores) if all_scores else 0.0
+    print(json.dumps({
+        "type": "SUMMARY",
+        "difficulty": args.difficulty,
+        "episodes": len(all_scores),
+        "scores": all_scores,
+        "avg_score": round(avg, 4),
+        "model": MODEL_NAME,
+    }))
