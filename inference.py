@@ -72,6 +72,7 @@ def run_episode(api_url, difficulty="medium", max_steps=50):
 
     obs = reset_env(api_url, difficulty)
     step_count = 0
+    final_score = 0.0
 
     while not obs["done"] and step_count < max_steps:
         step_count += 1
@@ -99,8 +100,9 @@ def run_episode(api_url, difficulty="medium", max_steps=50):
                 print(f"❌ {info['penalty']}")
             if info.get("final_grade"):
                 g = info["final_grade"]
+                final_score = g["score"]
                 print(f"\n{'='*60}")
-                print(f"DONE — Score: {g['score']} | Reason: {g['breakdown']['terminal_reason']}")
+                print(f"DONE — Score: {final_score} | Reason: {g['breakdown']['terminal_reason']}")
                 print(f"Base: {g['breakdown']['base_score']} × {g['breakdown']['tailoring_multiplier']}x tailoring")
                 print(f"Steps: {g['breakdown']['steps_taken']}")
 
@@ -114,7 +116,7 @@ def run_episode(api_url, difficulty="medium", max_steps=50):
     if step_count >= max_steps:
         print(f"\n⏱️  Max steps reached")
 
-    return obs.get("total_reward", 0)
+    return final_score
 
 
 if __name__ == "__main__":
