@@ -19,6 +19,12 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Request logger
+app.use((req, res, next) => {
+  console.log(`[${new Date().toISOString()}] ${req.method} ${req.path} ${JSON.stringify(req.body || {})}`);
+  next();
+});
+
 // Serve built frontend (production)
 const FRONTEND_DIST = path.join(__dirname, "frontend", "dist");
 app.use(express.static(FRONTEND_DIST));
