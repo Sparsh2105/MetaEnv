@@ -38,18 +38,51 @@ route("get", "/state", (req, res) => {
 });
 
 // --- POST /reset ---
+// Accepts either { difficulty: "easy"|"medium"|"hard" }
+// OR a fully custom config: { custom: true, job_title, company, platform, deadline, keywords, ... }
 route("post", "/reset", (req, res) => {
-  const difficulty = req.body?.difficulty || "medium";
-  const taskConfig = TASKS[difficulty];
+  const body = req.body || {};
 
-  if (!taskConfig) {
-    return res.status(400).json({
-      error: `Unknown difficulty "${difficulty}". Valid: easy, medium, hard`,
-    });
+  let taskConfig;
+  let label;
+
+  if (body.custom === true) {
+    // Fully custom scenario — validate required fields
+    const platform = body.platform;
+    if (!["workday", "1click", "linkedin_easy_apply"].includes(platform)) {
+      return res.status(400).json({
+        error: `Invalid platform "${platform}". Valid: workday, 1click, linkedin_easy_apply`,
+      });
+    }
+    const deadline = parseInt(body.deadline, 10);
+    if (!deadline || deadline < 1 || deadline > 60) {
+      return res.status(400).json({ error: "deadline must be an integer between 1 and 60" });
+    }
+    taskConfig = {
+      job_title:                      body.job_title || "Custom Role",
+      company:                        body.company || "Custom Corp",
+      platform,
+      deadline,
+      keywords:                       Array.isArray(body.keywords) ? body.keywords : [],
+      chaos_enabled:                  body.chaos_enabled !== false,
+      ghosting_probability:           parseFloat(body.ghosting_probability ?? 0.3),
+      recruiter_curveball_probability: parseFloat(body.recruiter_curveball_probability ?? 0.2),
+      require_tailoring:              body.require_tailoring === true,
+    };
+    label = `custom (${taskConfig.job_title} @ ${taskConfig.company})`;
+  } else {
+    const difficulty = body.difficulty || "medium";
+    taskConfig = TASKS[difficulty];
+    if (!taskConfig) {
+      return res.status(400).json({
+        error: `Unknown difficulty "${difficulty}". Valid: easy, medium, hard`,
+      });
+    }
+    label = difficulty;
   }
 
   const observation = env.reset(taskConfig);
-  res.json({ observation, message: `Episode reset. Difficulty: ${difficulty}` });
+  res.json({ observation, message: `Episode reset. Mode: ${label}` });
 });
 
 // --- POST /step ---

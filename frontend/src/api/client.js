@@ -14,10 +14,14 @@ async function request(method, path, body) {
 }
 
 export const api = {
-  getState:   ()           => request('GET',  '/state'),
-  getActions: ()           => request('GET',  '/actions'),
-  reset:      (difficulty) => request('POST', '/reset', { difficulty }),
-  step:       (action, tailored_skills) =>
+  getState:   ()                 => request('GET',  '/state'),
+  getActions: ()                 => request('GET',  '/actions'),
+
+  // Preset difficulty: reset({ difficulty: 'easy' | 'medium' | 'hard' })
+  // Custom config:     reset({ custom: true, job_title, company, platform, deadline, keywords, ... })
+  reset: (config) => request('POST', '/reset', config),
+
+  step: (action, tailored_skills) =>
     request('POST', '/step', tailored_skills?.length
       ? { action, tailored_skills }
       : { action }
