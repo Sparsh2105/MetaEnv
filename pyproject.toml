@@ -1,0 +1,28 @@
+[project]
+name = "metaenv"
+version = "1.0.0"
+description = "Job Application RL Environment — OpenEnv Hackathon Submission"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.0.0",
+    "requests>=2.25.0",
+    "openenv-core>=0.2.0",
+]
+
+[project.scripts]
+server = "server.app:main"
+
+[project.urls]
+Homepage = "https://huggingface.co/spaces/Sparsh2105/MetaEnv"
+Repository = "https://github.com/Sparsh2105/MetaEnv"
+
+[tool.openenv]
+name = "MetaEnv"
+version = "1.0.0"
+description = "Job Application RL Environment"
+spec = "openenv.yaml"
+inference = "inference.py"
+dockerfile = "Dockerfile"
+hf_space = "https://sparsh2105-metaenv.hf.space"
+tasks = ["easy", "medium", "hard"]
