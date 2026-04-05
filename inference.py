@@ -5,15 +5,19 @@ OpenAI-client-based agent for the Job Application RL Environment.
 Reads credentials from environment variables:
   API_BASE_URL  — LLM API endpoint (default: https://api.openai.com/v1)
   MODEL_NAME    — model identifier  (default: gpt-4o-mini)
-  HF_TOKEN      — Hugging Face / API key
+  HF_TOKEN      — Hugging Face / API key (also aliased as OPENAI_API_KEY)
 
-Emits structured stdout logs in [START] / [STEP] / [END] format.
+Emits structured stdout logs strictly in [START] / [STEP] / [END] format.
 
 Usage:
+    # Run all 3 tasks (default — required for hackathon evaluation):
     export API_BASE_URL=https://api.openai.com/v1
     export MODEL_NAME=gpt-4o-mini
     export HF_TOKEN=sk-...
-    python inference.py --api-url http://localhost:3000 --difficulty medium
+    python inference.py --api-url http://localhost:3000
+
+    # Run a specific difficulty:
+    python inference.py --api-url http://localhost:3000 --difficulty medium --episodes 3
 """
 
 import requests
@@ -24,9 +28,11 @@ import time
 from openai import OpenAI
 
 # --- Credentials from env ---
+# HF_TOKEN is the primary key per hackathon spec.
+# OPENAI_API_KEY is accepted as a fallback alias.
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "gpt-4o-mini")
-HF_TOKEN     = os.getenv("HF_TOKEN",     "")
+HF_TOKEN     = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
 
 client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
 
@@ -75,7 +81,6 @@ def ask_llm(obs):
         max_tokens=300,
     )
     content = response.choices[0].message.content
-    # Extract JSON from response
     try:
         return json.loads(content)
     except json.JSONDecodeError:
@@ -87,6 +92,8 @@ def ask_llm(obs):
 
 
 def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
+    """Run one episode and return the final score. Emits START/STEP/END logs."""
+
     # [START] log
     print(json.dumps({
         "type": "START",
@@ -94,7 +101,7 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
         "difficulty": difficulty,
         "model": MODEL_NAME,
         "api_base": API_BASE_URL,
-    }))
+    }), flush=True)
 
     obs = reset_env(api_url, difficulty)
     step_count = 0
@@ -115,7 +122,7 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
             reward = result["reward"]
             info = result.get("info", {})
 
-            # [STEP] log — required format
+            # [STEP] log — strict required format
             print(json.dumps({
                 "type": "STEP",
                 "episode": episode_num,
@@ -130,7 +137,7 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
                 "warning": info.get("warning"),
                 "penalty": info.get("penalty"),
                 "event": info.get("event"),
-            }))
+            }), flush=True)
 
             if info.get("final_grade"):
                 g = info["final_grade"]
@@ -143,13 +150,13 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
                 "episode": episode_num,
                 "step": step_count,
                 "error": str(e),
-            }))
+            }), flush=True)
             break
 
     if step_count >= max_steps and not obs["done"]:
         terminal_reason = "max_steps_reached"
 
-    # [END] log — required format
+    # [END] log — strict required format
     print(json.dumps({
         "type": "END",
         "episode": episode_num,
@@ -158,34 +165,66 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
         "total_reward": obs["total_reward"],
         "steps_taken": step_count,
         "terminal_reason": terminal_reason,
-    }))
+    }), flush=True)
 
     return final_score
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Job Application RL — Inference Script")
-    parser.add_argument("--api-url",    default=os.getenv("ENV_API_URL", "http://localhost:3000"))
-    parser.add_argument("--difficulty", default="medium", choices=["easy", "medium", "hard"])
-    parser.add_argument("--episodes",   type=int, default=3)
+    parser.add_argument("--api-url",    default=os.getenv("ENV_API_URL", "http://localhost:3000"),
+                        help="Base URL of the RL environment API")
+    parser.add_argument("--difficulty", default=None,
+                        choices=["easy", "medium", "hard"],
+                        help="Run a single difficulty. Omit to run all 3 (default for evaluation).")
+    parser.add_argument("--episodes",   type=int, default=1,
+                        help="Number of episodes per difficulty (default: 1)")
     args = parser.parse_args()
 
     if not HF_TOKEN:
-        print(json.dumps({"type": "ERROR", "message": "HF_TOKEN env var not set"}))
+        print(json.dumps({"type": "ERROR", "message": "HF_TOKEN (or OPENAI_API_KEY) env var not set"}))
         exit(1)
 
-    all_scores = []
-    for ep in range(1, args.episodes + 1):
-        score = run_episode(args.api_url, args.difficulty, episode_num=ep)
-        all_scores.append(score)
-        time.sleep(0.5)
+    # Determine which difficulties to run
+    difficulties = [args.difficulty] if args.difficulty else ["easy", "medium", "hard"]
 
-    avg = sum(all_scores) / len(all_scores) if all_scores else 0.0
-    print(json.dumps({
-        "type": "SUMMARY",
-        "difficulty": args.difficulty,
-        "episodes": len(all_scores),
-        "scores": all_scores,
-        "avg_score": round(avg, 4),
-        "model": MODEL_NAME,
-    }))
+    all_results = {}
+    global_episode = 1
+
+    for difficulty in difficulties:
+        scores = []
+        for ep in range(args.episodes):
+            score = run_episode(args.api_url, difficulty, episode_num=global_episode)
+            scores.append(score)
+            global_episode += 1
+            if ep < args.episodes - 1:
+                time.sleep(0.5)
+
+        avg = sum(scores) / len(scores) if scores else 0.0
+        all_results[difficulty] = {"scores": scores, "avg_score": round(avg, 4)}
+
+        # Per-difficulty summary
+        print(json.dumps({
+            "type": "SUMMARY",
+            "difficulty": difficulty,
+            "episodes": len(scores),
+            "scores": scores,
+            "avg_score": round(avg, 4),
+            "model": MODEL_NAME,
+        }), flush=True)
+
+        if len(difficulties) > 1:
+            time.sleep(0.5)
+
+    # Final overall summary when running all difficulties
+    if len(difficulties) > 1:
+        all_scores = [s for d in all_results.values() for s in d["scores"]]
+        overall_avg = sum(all_scores) / len(all_scores) if all_scores else 0.0
+        print(json.dumps({
+            "type": "SUMMARY",
+            "difficulty": "all",
+            "results": all_results,
+            "overall_avg_score": round(overall_avg, 4),
+            "model": MODEL_NAME,
+            "api_base": API_BASE_URL,
+        }), flush=True)

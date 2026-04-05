@@ -306,16 +306,35 @@ curl http://localhost:3000/state
 
 Resets the environment to a fresh episode.
 
+**Preset difficulty:**
 ```bash
 curl -X POST http://localhost:3000/reset \
   -H "Content-Type: application/json" \
   -d '{"difficulty": "medium"}'
 ```
 
+**Fully custom scenario:**
+```bash
+curl -X POST http://localhost:3000/reset \
+  -H "Content-Type: application/json" \
+  -d '{
+    "custom": true,
+    "job_title": "ML Engineer",
+    "company": "OpenAI",
+    "platform": "workday",
+    "deadline": 12,
+    "keywords": ["Python", "PyTorch", "CUDA"],
+    "chaos_enabled": true,
+    "ghosting_probability": 0.4,
+    "recruiter_curveball_probability": 0.25,
+    "require_tailoring": true
+  }'
+```
+
 ```json
 {
   "observation": { ... },
-  "message": "Episode reset. Difficulty: medium"
+  "message": "Episode reset. Mode: custom (ML Engineer @ OpenAI)"
 }
 ```
 
@@ -370,27 +389,31 @@ pip install openai requests
 
 ### Environment Variables
 
+These three variables are **mandatory** per the hackathon spec:
+
 ```bash
 export API_BASE_URL=https://api.openai.com/v1   # LLM API endpoint
 export MODEL_NAME=gpt-4o-mini                    # Model identifier
-export HF_TOKEN=sk-...                           # Your API key
+export HF_TOKEN=sk-...                           # Hugging Face / API key
 ```
 
-### Run a Single Episode
+`OPENAI_API_KEY` is also accepted as a fallback alias for `HF_TOKEN`.
+
+### Run All 3 Tasks (default — required for evaluation)
 
 ```bash
-python inference.py --api-url http://localhost:3000 --difficulty medium --episodes 1
+python inference.py --api-url http://localhost:3000
 ```
 
-### Run All Difficulties (3 episodes each)
+This runs 1 episode each on easy, medium, and hard — emitting `START/STEP/END` logs for all 3, then a final `SUMMARY` with all results.
+
+### Run a Specific Difficulty
 
 ```bash
-python inference.py --api-url http://localhost:3000 --difficulty easy --episodes 3
 python inference.py --api-url http://localhost:3000 --difficulty medium --episodes 3
-python inference.py --api-url http://localhost:3000 --difficulty hard --episodes 3
 ```
 
-### Run Full Evaluation
+### Run Full Multi-Episode Evaluation
 
 ```bash
 python eval.py --api-url http://localhost:3000 --episodes 10
@@ -398,20 +421,23 @@ python eval.py --api-url http://localhost:3000 --episodes 10
 
 ### Structured Log Format
 
-The inference script emits structured JSON logs to stdout:
+The inference script emits **strict JSON logs** to stdout — one JSON object per line:
 
 ```json
-{"type": "START", "episode": 1, "difficulty": "medium", "model": "gpt-4o-mini"}
+{"type": "START", "episode": 1, "difficulty": "easy", "model": "gpt-4o-mini", "api_base": "..."}
 
 {"type": "STEP", "episode": 1, "step": 1, "action": "request_referral",
  "reasoning": "Get referral for bonus reward", "reward": -0.01,
- "total_reward": -0.01, "done": false, "day": 2, "deadline": 10}
+ "total_reward": -0.01, "done": false, "day": 2, "deadline": 15,
+ "warning": null, "penalty": null, "event": "referral_sent"}
 
-{"type": "END", "episode": 1, "difficulty": "medium", "score": 0.54,
- "total_reward": 0.49, "steps_taken": 7, "terminal_reason": "applied_with_referral"}
+{"type": "END", "episode": 1, "difficulty": "easy", "score": 0.82,
+ "total_reward": 0.79, "steps_taken": 4, "terminal_reason": "applied_with_referral"}
 
-{"type": "SUMMARY", "difficulty": "medium", "episodes": 3,
- "scores": [0.54, 0.61, 0.48], "avg_score": 0.5433, "model": "gpt-4o-mini"}
+{"type": "SUMMARY", "difficulty": "easy", "episodes": 1, "scores": [0.82], "avg_score": 0.82, "model": "gpt-4o-mini"}
+
+{"type": "SUMMARY", "difficulty": "all", "results": {"easy": {...}, "medium": {...}, "hard": {...}},
+ "overall_avg_score": 0.52, "model": "gpt-4o-mini"}
 ```
 
 ### Baseline Scores (gpt-4o-mini)
