@@ -26,13 +26,19 @@ app.use(express.static(FRONTEND_DIST));
 // Single shared environment instance (stateful per session)
 let env = new Environment(TASKS.medium);
 
+// Helper: register route on both /path and /api/path
+function route(method, path, handler) {
+  app[method](path, handler);
+  app[method](`/api${path}`, handler);
+}
+
 // --- GET /state ---
-app.get("/state", (req, res) => {
+route("get", "/state", (req, res) => {
   res.json({ observation: env.getState() });
 });
 
 // --- POST /reset ---
-app.post("/reset", (req, res) => {
+route("post", "/reset", (req, res) => {
   const difficulty = req.body?.difficulty || "medium";
   const taskConfig = TASKS[difficulty];
 
@@ -47,7 +53,7 @@ app.post("/reset", (req, res) => {
 });
 
 // --- POST /step ---
-app.post("/step", (req, res) => {
+route("post", "/step", (req, res) => {
   const { action, tailored_skills } = req.body || {};
 
   if (!action) {
@@ -59,7 +65,7 @@ app.post("/step", (req, res) => {
 });
 
 // --- GET /actions ---
-app.get("/actions", (req, res) => {
+route("get", "/actions", (req, res) => {
   res.json({
     valid_actions: [
       {

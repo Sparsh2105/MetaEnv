@@ -1,7 +1,6 @@
 import { useState } from 'react'
-import { api } from '../api/client.js'
 
-function CodeBlock({ code, lang = 'json' }) {
+function CodeBlock({ code }) {
   const [copied, setCopied] = useState(false)
   const copy = () => {
     navigator.clipboard.writeText(code)
@@ -10,14 +9,12 @@ function CodeBlock({ code, lang = 'json' }) {
   }
   return (
     <div className="relative group">
-      <pre className="bg-surface-800 border border-surface-600 rounded-lg p-4 text-xs terminal-text text-slate-300 overflow-x-auto">
+      <pre className="bg-surface-950 border border-white/5 rounded-xl p-4 text-xs font-mono text-slate-300 overflow-x-auto leading-relaxed">
         {code}
       </pre>
-      <button
-        onClick={copy}
-        className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity
-                   bg-surface-600 hover:bg-surface-500 text-slate-400 text-xs px-2 py-1 rounded"
-      >
+      <button onClick={copy}
+              className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity
+                         bg-surface-700 hover:bg-surface-600 text-slate-400 text-xs px-2 py-1 rounded-lg border border-white/5">
         {copied ? '✓ Copied' : 'Copy'}
       </button>
     </div>
@@ -31,8 +28,7 @@ function TryIt({ endpoint, method, defaultBody, label }) {
   const [error, setError] = useState(null)
 
   const run = async () => {
-    setLoading(true)
-    setError(null)
+    setLoading(true); setError(null)
     try {
       let data
       if (method === 'GET') {
@@ -40,39 +36,31 @@ function TryIt({ endpoint, method, defaultBody, label }) {
         data = await res.json()
       } else {
         const res = await fetch(`/api${endpoint}`, {
-          method,
-          headers: { 'Content-Type': 'application/json' },
+          method, headers: { 'Content-Type': 'application/json' },
           body: body || undefined,
         })
         data = await res.json()
       }
       setResult(data)
-    } catch (e) {
-      setError(e.message)
-    } finally {
-      setLoading(false)
-    }
+    } catch (e) { setError(e.message) }
+    finally { setLoading(false) }
   }
 
   return (
-    <div className="bg-surface-800 border border-surface-600 rounded-lg p-4 space-y-3">
+    <div className="bg-surface-800/60 border border-white/5 rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
-        <span className="text-xs text-slate-400 font-medium">Try it live</span>
+        <span className="text-xs text-slate-500 font-medium">Try it live</span>
         <button onClick={run} disabled={loading} className="btn-primary text-xs py-1 px-3">
           {loading ? '⏳' : '▶ Send'}
         </button>
       </div>
       {defaultBody && (
-        <textarea
-          value={body}
-          onChange={e => setBody(e.target.value)}
-          rows={3}
-          className="w-full bg-surface-700 border border-surface-600 rounded-lg px-3 py-2 text-xs terminal-text text-slate-300 focus:outline-none focus:border-brand-500/50 resize-none"
-        />
+        <textarea value={body} onChange={e => setBody(e.target.value)} rows={3}
+                  className="input w-full text-xs font-mono resize-none" />
       )}
       {error && <div className="text-red-400 text-xs">{error}</div>}
       {result && (
-        <pre className="text-xs terminal-text text-green-300 bg-surface-900 rounded-lg p-3 overflow-x-auto max-h-48">
+        <pre className="text-xs font-mono text-green-300 bg-surface-950 rounded-xl p-3 overflow-x-auto max-h-48 border border-white/5">
           {JSON.stringify(result, null, 2)}
         </pre>
       )}
@@ -82,158 +70,142 @@ function TryIt({ endpoint, method, defaultBody, label }) {
 
 const ENDPOINTS = [
   {
-    method: 'GET', path: '/state', color: 'text-green-400 bg-green-900/30 border-green-700/50',
-    desc: 'Returns the current observation — what the agent can see.',
-    response: `{
-  "observation": {
-    "job_title": "Backend Engineer",
-    "company": "MidSizeCo",
-    "platform": "linkedin_easy_apply",
-    "job_description_keywords": ["Node.js", "PostgreSQL", "REST APIs", "Docker"],
-    "day": 3,
-    "deadline": 10,
-    "days_remaining": 7,
-    "recruiter_event": null,
-    "done": false,
-    "total_reward": -0.02
-  }
-}`,
+    method: 'GET', path: '/state', label: 'Get State',
+    desc: 'Returns the current observation — what the agent can see right now.',
+    response: `{ "observation": { "job_title": "Backend Engineer", "company": "MidSizeCo", "platform": "linkedin_easy_apply", "day": 1, "deadline": 10, "days_remaining": 9, "done": false, "total_reward": 0, ... } }`,
+    tryIt: { endpoint: '/state', method: 'GET' },
   },
   {
-    method: 'POST', path: '/reset', color: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
-    desc: 'Resets the episode. Pass difficulty: easy | medium | hard.',
-    body: { difficulty: 'medium' },
-    response: `{
-  "observation": { ... },
-  "message": "Episode reset. Difficulty: medium"
-}`,
+    method: 'POST', path: '/reset', label: 'Reset Episode',
+    desc: 'Resets the environment to a fresh episode. Pass difficulty to select the task.',
+    body: `{ "difficulty": "easy" | "medium" | "hard" }`,
+    response: `{ "observation": { ... }, "message": "Episode reset. Difficulty: medium" }`,
+    tryIt: { endpoint: '/reset', method: 'POST', defaultBody: { difficulty: 'medium' } },
   },
   {
-    method: 'POST', path: '/step', color: 'text-blue-400 bg-blue-900/30 border-blue-700/50',
-    desc: 'Takes one action. Returns observation, reward, done, info.',
-    body: { action: 'apply_1click' },
-    response: `{
-  "observation": { "applied": true, "day": 4, ... },
-  "reward": -0.01,
-  "done": false,
-  "info": { "event": "applied_1click", "message": "Applied via 1-click." }
-}`,
+    method: 'POST', path: '/step', label: 'Take Action',
+    desc: 'Executes one action and returns the new observation, reward, done flag, and info.',
+    body: `{ "action": "request_referral" | "reply_email" | "apply_workday" | "apply_1click" | "submit_application" | "wait", "tailored_skills": ["skill1", "skill2"]  // optional, for submit_application }`,
+    response: `{ "observation": { ... }, "reward": 0.3, "done": false, "info": { "message": "Recruiter replied!" } }`,
+    tryIt: { endpoint: '/step', method: 'POST', defaultBody: { action: 'wait' } },
   },
   {
-    method: 'GET', path: '/actions', color: 'text-green-400 bg-green-900/30 border-green-700/50',
-    desc: 'Lists all valid actions with descriptions and costs.',
-    response: `{
-  "valid_actions": [
-    { "name": "request_referral", "description": "...", "cost": "1 step" },
-    { "name": "reply_email", ... },
-    ...
-  ]
-}`,
+    method: 'GET', path: '/actions', label: 'List Actions',
+    desc: 'Returns all valid actions with descriptions and costs.',
+    response: `{ "valid_actions": [ { "name": "request_referral", "description": "...", "cost": "1 step" }, ... ] }`,
+    tryIt: { endpoint: '/actions', method: 'GET' },
   },
 ]
+
+const OBS_FIELDS = [
+  { field: 'job_title',                  type: 'string',  desc: 'Job title for this episode' },
+  { field: 'company',                    type: 'string',  desc: 'Company name' },
+  { field: 'platform',                   type: 'enum',    desc: 'workday | 1click | linkedin_easy_apply' },
+  { field: 'job_description_keywords',   type: 'string[]',desc: 'Keywords for tailoring bonus' },
+  { field: 'day',                        type: 'integer', desc: 'Current day in episode' },
+  { field: 'deadline',                   type: 'integer', desc: 'Total days allowed' },
+  { field: 'days_remaining',             type: 'integer', desc: 'Days left before deadline' },
+  { field: 'referral_requested',         type: 'boolean', desc: 'Whether referral was requested' },
+  { field: 'ghosted',                    type: 'boolean', desc: 'Whether contact ghosted you' },
+  { field: 'applied',                    type: 'boolean', desc: 'Whether application was started' },
+  { field: 'application_submitted',      type: 'boolean', desc: 'Whether application was finalized' },
+  { field: 'recruiter_event',            type: 'object?', desc: 'Active recruiter curveball event' },
+  { field: 'recruiter_replied_pending',  type: 'boolean', desc: 'MUST reply_email immediately' },
+  { field: 'got_interview',              type: 'boolean', desc: 'Whether interview was secured' },
+  { field: 'done',                       type: 'boolean', desc: 'Whether episode is complete' },
+  { field: 'terminal_reason',            type: 'string?', desc: 'interview_secured | applied_with_referral | applied_cold | deadline_missed' },
+  { field: 'steps_taken',               type: 'integer', desc: 'Total steps used so far' },
+  { field: 'total_reward',              type: 'float',   desc: 'Cumulative reward this episode' },
+]
+
+const METHOD_COLOR = {
+  GET:  'bg-green-500/15 text-green-400 border-green-500/30',
+  POST: 'bg-blue-500/15 text-blue-400 border-blue-500/30',
+}
+
+const PYTHON_SNIPPET = `import requests, os
+
+API = "http://localhost:3000"
+
+# Reset
+obs = requests.post(f"{API}/reset", json={"difficulty": "medium"}).json()["observation"]
+
+# Step loop
+while not obs["done"]:
+    action = "reply_email" if obs["recruiter_replied_pending"] else "apply_1click"
+    result = requests.post(f"{API}/step", json={"action": action}).json()
+    obs = result["observation"]
+    print(f"Step {obs['steps_taken']}: reward={result['reward']:.3f}")
+
+print(f"Final reward: {obs['total_reward']:.3f}")`
 
 export default function DocsPage() {
   return (
     <div className="space-y-6 animate-fade-in max-w-4xl">
-      {/* Intro */}
-      <div className="glass-bright rounded-xl p-6">
-        <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-2">OpenEnv API Reference</div>
-        <h2 className="text-xl font-bold text-white mb-2">Job Application RL Environment</h2>
-        <p className="text-slate-400 text-sm leading-relaxed">
-          A stateful HTTP API implementing the OpenEnv spec. Each session maintains one environment instance.
-          Call <code className="text-brand-400 bg-brand-500/10 px-1 rounded">/reset</code> to start a new episode,
-          then loop <code className="text-brand-400 bg-brand-500/10 px-1 rounded">/step</code> until{' '}
-          <code className="text-brand-400 bg-brand-500/10 px-1 rounded">done: true</code>.
+
+      {/* Header */}
+      <div className="glass-bright rounded-2xl p-5">
+        <div className="text-lg font-bold text-white mb-1">API Reference</div>
+        <p className="text-slate-400 text-sm">
+          Full HTTP interface for the Job Application RL Environment. All endpoints return JSON.
+          Base URL: <code className="text-brand-300 bg-brand-500/10 px-1.5 py-0.5 rounded text-xs font-mono">http://localhost:3000</code>
         </p>
-        <div className="mt-3 flex flex-wrap gap-2">
-          <span className="tag bg-surface-700 text-slate-400 border border-surface-600">Base: http://localhost:3000</span>
-          <span className="tag bg-surface-700 text-slate-400 border border-surface-600">HF Space: PORT 7860</span>
-          <span className="tag bg-brand-500/15 text-brand-400 border border-brand-500/30">OpenEnv v1.0</span>
-        </div>
       </div>
 
       {/* Endpoints */}
       {ENDPOINTS.map(ep => (
-        <div key={ep.path} className="glass rounded-xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-surface-600">
-            <div className="flex items-center gap-3 mb-2">
-              <span className={`tag border font-mono font-bold ${ep.color}`}>{ep.method}</span>
-              <code className="text-white font-mono text-sm">{ep.path}</code>
-            </div>
-            <p className="text-slate-400 text-sm">{ep.desc}</p>
+        <div key={ep.path} className="card space-y-4">
+          <div className="flex items-center gap-3">
+            <span className={`tag border font-mono font-bold ${METHOD_COLOR[ep.method]}`}>{ep.method}</span>
+            <code className="text-white font-mono text-sm">{ep.path}</code>
+            <span className="text-slate-500 text-sm">{ep.label}</span>
           </div>
-          <div className="p-5 space-y-4">
-            {ep.body && (
-              <div>
-                <div className="text-xs text-slate-500 mb-2">Request Body</div>
-                <CodeBlock code={JSON.stringify(ep.body, null, 2)} />
-              </div>
-            )}
+          <p className="text-slate-400 text-sm">{ep.desc}</p>
+          {ep.body && (
             <div>
-              <div className="text-xs text-slate-500 mb-2">Response</div>
-              <CodeBlock code={ep.response} />
+              <div className="section-title">Request Body</div>
+              <CodeBlock code={ep.body} />
             </div>
-            <TryIt endpoint={ep.path} method={ep.method} defaultBody={ep.body} />
+          )}
+          <div>
+            <div className="section-title">Response</div>
+            <CodeBlock code={ep.response} />
           </div>
+          <TryIt {...ep.tryIt} />
         </div>
       ))}
 
       {/* Observation space */}
-      <div className="glass rounded-xl p-5">
-        <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">Observation Space</div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-          {[
-            ['job_title', 'string', 'Job position title'],
-            ['company', 'string', 'Company name'],
-            ['platform', 'workday | 1click | linkedin_easy_apply', 'Application platform'],
-            ['job_description_keywords', 'string[]', 'Keywords for resume tailoring'],
-            ['day', 'integer', 'Current day (1-indexed)'],
-            ['deadline', 'integer', 'Episode deadline in days'],
-            ['days_remaining', 'integer', 'deadline - day'],
-            ['referral_requested', 'boolean', 'Whether referral was requested'],
-            ['ghosted', 'boolean', 'Whether referral contact ghosted'],
-            ['applied', 'boolean', 'Whether application was submitted'],
-            ['application_submitted', 'boolean', 'Whether final submission done'],
-            ['recruiter_event', 'object | null', 'Pending recruiter curveball'],
-            ['recruiter_replied_pending', 'boolean', 'MUST reply_email next step'],
-            ['got_interview', 'boolean', 'Interview secured flag'],
-            ['done', 'boolean', 'Episode terminal flag'],
-            ['terminal_reason', 'string | null', 'Why episode ended'],
-            ['steps_taken', 'integer', 'Total steps in episode'],
-            ['total_reward', 'float', 'Accumulated reward'],
-          ].map(([field, type, desc]) => (
-            <div key={field} className="flex gap-3 bg-surface-700 rounded-lg px-3 py-2">
-              <code className="text-brand-400 text-xs font-mono shrink-0 w-40">{field}</code>
-              <div>
-                <div className="text-slate-500 text-xs">{type}</div>
-                <div className="text-slate-400 text-xs">{desc}</div>
-              </div>
-            </div>
-          ))}
+      <div className="card">
+        <div className="section-title">Observation Space</div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b border-white/5">
+                <th className="text-left text-slate-500 font-medium pb-2 pr-4">Field</th>
+                <th className="text-left text-slate-500 font-medium pb-2 pr-4">Type</th>
+                <th className="text-left text-slate-500 font-medium pb-2">Description</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-white/5">
+              {OBS_FIELDS.map(({ field, type, desc }) => (
+                <tr key={field} className="hover:bg-white/5 transition-colors">
+                  <td className="py-2 pr-4 font-mono text-brand-300">{field}</td>
+                  <td className="py-2 pr-4 text-amber-400">{type}</td>
+                  <td className="py-2 text-slate-400">{desc}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Quick start */}
-      <div className="glass rounded-xl p-5">
-        <div className="text-xs font-medium text-slate-500 uppercase tracking-wider mb-4">Quick Start — Python</div>
-        <CodeBlock lang="python" code={`import requests
-
-BASE = "http://localhost:3000"
-
-# Start episode
-obs = requests.post(f"{BASE}/reset", json={"difficulty": "medium"}).json()["observation"]
-
-# Agent loop
-while not obs["done"]:
-    # Your agent logic here
-    action = "apply_1click"  # or use an LLM
-    
-    result = requests.post(f"{BASE}/step", json={"action": action}).json()
-    obs = result["observation"]
-    print(f"reward: {result['reward']}, done: {result['done']}")
-
-print(f"Final score: {obs['total_reward']}")`} />
+      {/* Python quickstart */}
+      <div className="card">
+        <div className="section-title">Python Quick Start</div>
+        <CodeBlock code={PYTHON_SNIPPET} />
       </div>
+
     </div>
   )
 }
