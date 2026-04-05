@@ -2,7 +2,7 @@
 title: MetaEnv — Job Application RL Environment
 emoji: 💼
 colorFrom: indigo
-colorTo: cyan
+colorTo: blue
 sdk: docker
 pinned: true
 tags:
