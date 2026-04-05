@@ -1,42 +1,43 @@
 """
 inference.py
-OpenAI-client-based agent for the Job Application RL Environment.
+Job Application RL Environment — Baseline Inference Script
 
-Reads credentials from environment variables:
-  API_BASE_URL  — LLM API endpoint (default: https://api.openai.com/v1)
-  MODEL_NAME    — model identifier  (default: gpt-4o-mini)
-  HF_TOKEN      — Hugging Face / API key (also aliased as OPENAI_API_KEY)
-
-Emits structured stdout logs strictly in [START] / [STEP] / [END] format.
+MANDATORY ENV VARS:
+  API_BASE_URL      LLM API endpoint
+  MODEL_NAME        Model identifier
+  HF_TOKEN          Hugging Face / API key (also accepts OPENAI_API_KEY)
+  ENV_API_URL       RL environment base URL (default: http://localhost:3000)
 
 Usage:
-    # Run all 3 tasks (default — required for hackathon evaluation):
     export API_BASE_URL=https://api.openai.com/v1
     export MODEL_NAME=gpt-4o-mini
     export HF_TOKEN=sk-...
-    python inference.py --api-url http://localhost:3000
-
-    # Run a specific difficulty:
-    python inference.py --api-url http://localhost:3000 --difficulty medium --episodes 3
+    python inference.py
 """
 
-import requests
-import json
 import os
-import argparse
-import time
+import json
+import requests
+import textwrap
+from typing import List, Optional
 from openai import OpenAI
 
-# --- Credentials from env ---
-# HF_TOKEN is the primary key per hackathon spec.
-# OPENAI_API_KEY is accepted as a fallback alias.
+# --- Credentials ---
+API_KEY      = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "gpt-4o-mini")
-HF_TOKEN     = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
+ENV_API_URL  = os.getenv("ENV_API_URL",  "http://localhost:3000")
 
-client = OpenAI(api_key=HF_TOKEN, base_url=API_BASE_URL)
+BENCHMARK    = "job-application-rl"
+MAX_STEPS    = 30
+TEMPERATURE  = 0.7
+MAX_TOKENS   = 300
+SUCCESS_SCORE_THRESHOLD = 0.5
 
-SYSTEM_PROMPT = """You are an AI agent playing a job application simulation.
+client = OpenAI(api_key=API_KEY, base_url=API_BASE_URL)
+
+SYSTEM_PROMPT = textwrap.dedent("""
+You are an AI agent playing a job application simulation.
 Goal: Secure an interview before the deadline.
 
 Rules:
@@ -52,179 +53,167 @@ Respond ONLY with valid JSON (no extra text):
   "tailored_skills": ["skill1", "skill2"],
   "reasoning": "one sentence"
 }
-tailored_skills only needed for submit_application."""
+tailored_skills only needed for submit_application.
+""").strip()
 
 
-def reset_env(api_url, difficulty):
-    resp = requests.post(f"{api_url}/reset", json={"difficulty": difficulty}, timeout=10)
+# --- Logging (strict format) ---
+
+def log_start(task: str, env: str, model: str) -> None:
+    print(f"[START] task={task} env={env} model={model}", flush=True)
+
+def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+    error_val = error if error else "null"
+    done_val  = str(done).lower()
+    print(f"[STEP] step={step} action={action} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+
+def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
+    rewards_str = ",".join(f"{r:.2f}" for r in rewards)
+    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+
+
+# --- Environment API ---
+
+def env_reset(difficulty: str) -> dict:
+    resp = requests.post(f"{ENV_API_URL}/reset", json={"difficulty": difficulty}, timeout=10)
     resp.raise_for_status()
     return resp.json()["observation"]
 
-
-def send_action(api_url, action, tailored_skills=None):
+def env_step(action: str, tailored_skills: Optional[List[str]] = None) -> dict:
     payload = {"action": action}
     if tailored_skills:
         payload["tailored_skills"] = tailored_skills
-    resp = requests.post(f"{api_url}/step", json=payload, timeout=10)
+    resp = requests.post(f"{ENV_API_URL}/step", json=payload, timeout=10)
     resp.raise_for_status()
     return resp.json()
 
 
-def ask_llm(obs):
-    response = client.chat.completions.create(
-        model=MODEL_NAME,
-        messages=[
-            {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user",   "content": f"Current state:\n{json.dumps(obs, indent=2)}\n\nWhat action do you take?"}
-        ],
-        temperature=0.7,
-        max_tokens=300,
-    )
-    content = response.choices[0].message.content
+# --- LLM ---
+
+def get_model_action(obs: dict, history: List[str]) -> dict:
+    history_block = "\n".join(history[-4:]) if history else "None"
+    user_prompt = f"Current state:\n{json.dumps(obs, indent=2)}\n\nRecent history:\n{history_block}\n\nWhat action do you take?"
     try:
-        return json.loads(content)
-    except json.JSONDecodeError:
-        import re
-        match = re.search(r'\{[\s\S]*\}', content)
-        if match:
-            return json.loads(match.group())
-        raise ValueError(f"Could not parse LLM response: {content}")
-
-
-def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
-    """Run one episode and return the final score. Emits START/STEP/END logs."""
-
-    # [START] log
-    print(json.dumps({
-        "type": "START",
-        "episode": episode_num,
-        "difficulty": difficulty,
-        "model": MODEL_NAME,
-        "api_base": API_BASE_URL,
-    }), flush=True)
-
-    obs = reset_env(api_url, difficulty)
-    step_count = 0
-    final_score = 0.0
-    terminal_reason = "unknown"
-
-    while not obs["done"] and step_count < max_steps:
-        step_count += 1
-
+        completion = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=[
+                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "user",   "content": user_prompt},
+            ],
+            temperature=TEMPERATURE,
+            max_tokens=MAX_TOKENS,
+            stream=False,
+        )
+        text = (completion.choices[0].message.content or "").strip()
+        # Try direct parse
         try:
-            parsed = ask_llm(obs)
-            action = parsed["action"]
-            tailored_skills = parsed.get("tailored_skills")
+            return json.loads(text)
+        except json.JSONDecodeError:
+            import re
+            match = re.search(r'\{[\s\S]*\}', text)
+            if match:
+                return json.loads(match.group())
+        return {"action": "wait", "reasoning": "parse error"}
+    except Exception as exc:
+        print(f"[DEBUG] LLM error: {exc}", flush=True)
+        return {"action": "wait", "reasoning": str(exc)}
+
+
+# --- Episode runner ---
+
+def run_episode(difficulty: str, episode_num: int = 1) -> float:
+    task_name = f"job-application-{difficulty}"
+
+    log_start(task=task_name, env=BENCHMARK, model=MODEL_NAME)
+
+    rewards: List[float] = []
+    steps_taken = 0
+    score = 0.0
+    success = False
+    history: List[str] = []
+    last_error: Optional[str] = None
+
+    try:
+        obs = env_reset(difficulty)
+
+        for step in range(1, MAX_STEPS + 1):
+            if obs["done"]:
+                break
+
+            parsed   = get_model_action(obs, history)
+            action   = parsed.get("action", "wait")
+            skills   = parsed.get("tailored_skills") or None
             reasoning = parsed.get("reasoning", "")
 
-            result = send_action(api_url, action, tailored_skills)
-            obs = result["observation"]
-            reward = result["reward"]
-            info = result.get("info", {})
+            last_error = None
+            try:
+                result  = env_step(action, skills)
+                obs     = result["observation"]
+                reward  = result.get("reward", 0.0)
+                done    = obs["done"]
+                info    = result.get("info", {})
 
-            # [STEP] log — strict required format
-            print(json.dumps({
-                "type": "STEP",
-                "episode": episode_num,
-                "step": step_count,
-                "action": action,
-                "reasoning": reasoning,
-                "reward": reward,
-                "total_reward": obs["total_reward"],
-                "done": obs["done"],
-                "day": obs["day"],
-                "deadline": obs["deadline"],
-                "warning": info.get("warning"),
-                "penalty": info.get("penalty"),
-                "event": info.get("event"),
-            }), flush=True)
+                if info.get("penalty"):
+                    last_error = info["penalty"]
+                elif info.get("warning"):
+                    last_error = info["warning"]
 
-            if info.get("final_grade"):
-                g = info["final_grade"]
-                final_score = g["score"]
-                terminal_reason = info.get("terminal_reason", obs.get("terminal_reason", "unknown"))
+                # Extract final score
+                if info.get("final_grade"):
+                    score = info["final_grade"]["score"]
 
-        except Exception as e:
-            print(json.dumps({
-                "type": "STEP",
-                "episode": episode_num,
-                "step": step_count,
-                "error": str(e),
-            }), flush=True)
-            break
+            except Exception as e:
+                reward = 0.0
+                done   = False
+                last_error = str(e)
 
-    if step_count >= max_steps and not obs["done"]:
-        terminal_reason = "max_steps_reached"
+            rewards.append(reward)
+            steps_taken = step
 
-    # [END] log — strict required format
-    print(json.dumps({
-        "type": "END",
-        "episode": episode_num,
-        "difficulty": difficulty,
-        "score": final_score,
-        "total_reward": obs["total_reward"],
-        "steps_taken": step_count,
-        "terminal_reason": terminal_reason,
-    }), flush=True)
+            log_step(step=step, action=action, reward=reward, done=done, error=last_error)
 
-    return final_score
+            history.append(f"Step {step}: {action} -> reward {reward:+.2f} | {reasoning}")
 
+            if done:
+                break
+
+        success = score >= SUCCESS_SCORE_THRESHOLD
+
+    except Exception as e:
+        last_error = str(e)
+        print(f"[DEBUG] Episode error: {e}", flush=True)
+
+    log_end(success=success, steps=steps_taken, score=score, rewards=rewards)
+    return score
+
+
+# --- Main ---
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Job Application RL — Inference Script")
-    parser.add_argument("--api-url",    default=os.getenv("ENV_API_URL", "http://localhost:3000"),
-                        help="Base URL of the RL environment API")
-    parser.add_argument("--difficulty", default=None,
-                        choices=["easy", "medium", "hard"],
-                        help="Run a single difficulty. Omit to run all 3 (default for evaluation).")
-    parser.add_argument("--episodes",   type=int, default=1,
-                        help="Number of episodes per difficulty (default: 1)")
+    import argparse
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--api-url",    default=ENV_API_URL)
+    parser.add_argument("--difficulty", default=None, choices=["easy", "medium", "hard"])
+    parser.add_argument("--episodes",   type=int, default=1)
     args = parser.parse_args()
 
-    if not HF_TOKEN:
-        print(json.dumps({"type": "ERROR", "message": "HF_TOKEN (or OPENAI_API_KEY) env var not set"}))
+    ENV_API_URL = args.api_url
+
+    if not API_KEY:
+        print("[ERROR] HF_TOKEN or OPENAI_API_KEY env var not set", flush=True)
         exit(1)
 
-    # Determine which difficulties to run
     difficulties = [args.difficulty] if args.difficulty else ["easy", "medium", "hard"]
 
-    all_results = {}
-    global_episode = 1
+    ep_num = 1
+    all_scores = []
+    for diff in difficulties:
+        for _ in range(args.episodes):
+            s = run_episode(diff, episode_num=ep_num)
+            all_scores.append(s)
+            ep_num += 1
 
-    for difficulty in difficulties:
-        scores = []
-        for ep in range(args.episodes):
-            score = run_episode(args.api_url, difficulty, episode_num=global_episode)
-            scores.append(score)
-            global_episode += 1
-            if ep < args.episodes - 1:
-                time.sleep(0.5)
-
-        avg = sum(scores) / len(scores) if scores else 0.0
-        all_results[difficulty] = {"scores": scores, "avg_score": round(avg, 4)}
-
-        # Per-difficulty summary
-        print(json.dumps({
-            "type": "SUMMARY",
-            "difficulty": difficulty,
-            "episodes": len(scores),
-            "scores": scores,
-            "avg_score": round(avg, 4),
-            "model": MODEL_NAME,
-        }), flush=True)
-
-        if len(difficulties) > 1:
-            time.sleep(0.5)
-
-    # Final overall summary when running all difficulties
     if len(difficulties) > 1:
-        all_scores = [s for d in all_results.values() for s in d["scores"]]
-        overall_avg = sum(all_scores) / len(all_scores) if all_scores else 0.0
-        print(json.dumps({
-            "type": "SUMMARY",
-            "difficulty": "all",
-            "results": all_results,
-            "overall_avg_score": round(overall_avg, 4),
-            "model": MODEL_NAME,
-            "api_base": API_BASE_URL,
-        }), flush=True)
+        avg = sum(all_scores) / len(all_scores) if all_scores else 0.0
+        print(f"[SUMMARY] difficulties=all overall_avg={avg:.3f} model={MODEL_NAME}", flush=True)
