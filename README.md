@@ -13,6 +13,35 @@ tags:
   - rl-environment
 ---
 
+## 🎥 Project Preview
+
+<div align="center">
+
+### 🧠 Dashboard — Real-Time Environment Insights
+<img src="https://github.com/user-attachments/assets/0009bbc3-685a-4d4c-a965-e9bbc068b195" width="90%" />
+
+<br/>
+
+### 🎮 Playground — Interactive RL Simulation
+<img src="https://github.com/user-attachments/assets/15f9cdf6-dc7e-404c-9fa3-d7e64f8792e3" width="90%" />
+
+<br/>
+
+### 🤖 Agent Runner — Live LLM Execution
+<img src="https://github.com/user-attachments/assets/69e9d3c8-96bf-4860-a935-760e08527211" width="90%" />
+
+</div>
+
+---
+
+### ✨ What You’re Seeing
+
+- 📊 **Dashboard** → Monitor tasks, rewards, and system state in real-time  
+- 🎮 **Playground** → Manually interact with the RL environment step-by-step  
+- 🤖 **Agent Runner** → Run LLM agents with live visualization and scoring  
+
+> ⚡ Built with React + Tailwind + Recharts for a smooth, production-grade UI
+
 <div align="center">
 
 <img src="https://readme-typing-svg.demolab.com?font=JetBrains+Mono&weight=700&size=32&pause=1000&color=6366F1&center=true&vCenter=true&width=600&lines=MetaEnv+%F0%9F%92%BC;Job+Application+RL+Environment;OpenEnv+%C2%B7+Hackathon+2025" alt="MetaEnv" />
