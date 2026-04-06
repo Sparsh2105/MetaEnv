@@ -13,6 +13,34 @@ Rules:
 - Every step costs -0.01 (time penalty), act efficiently
 Respond ONLY with valid JSON: {"action":"...","tailored_skills":[],"reasoning":"..."}`
 
+// Provider presets — base URL + available models
+const PROVIDERS = {
+  openai: {
+    label: 'OpenAI',
+    logo: '⬡',
+    baseUrl: 'https://api.openai.com/v1',
+    keyPlaceholder: 'sk-…',
+    models: [
+      { id: 'gpt-4o-mini',  label: 'GPT-4o Mini (fast, cheap)' },
+      { id: 'gpt-4o',       label: 'GPT-4o (best quality)'     },
+      { id: 'gpt-4-turbo',  label: 'GPT-4 Turbo'               },
+      { id: 'gpt-3.5-turbo',label: 'GPT-3.5 Turbo (fastest)'   },
+    ],
+  },
+  groq: {
+    label: 'Groq',
+    logo: '⚡',
+    baseUrl: 'https://api.groq.com/openai/v1',
+    keyPlaceholder: 'gsk_…',
+    models: [
+      { id: 'llama-3.3-70b-versatile',      label: 'Llama 3.3 70B (recommended)' },
+      { id: 'llama-3.1-8b-instant',         label: 'Llama 3.1 8B (fastest)'      },
+      { id: 'mixtral-8x7b-32768',           label: 'Mixtral 8x7B'                },
+      { id: 'gemma2-9b-it',                 label: 'Gemma 2 9B'                  },
+    ],
+  },
+}
+
 const PRESETS = {
   easy:   { job_title: 'Frontend Developer Intern', company: 'StartupXYZ',  platform: '1click',             deadline: 15, keywords: 'React, CSS, JavaScript',                                    chaos_enabled: false, ghosting_probability: 0,   recruiter_curveball_probability: 0    },
   medium: { job_title: 'Backend Engineer',          company: 'MidSizeCo',   platform: 'linkedin_easy_apply', deadline: 10, keywords: 'Node.js, PostgreSQL, REST APIs, Docker',                    chaos_enabled: true,  ghosting_probability: 0.3, recruiter_curveball_probability: 0.2  },
@@ -42,10 +70,11 @@ export default function AgentRunner() {
   const [custom, setCustom] = useState(DEFAULT_CUSTOM)
   const [showCustom, setShowCustom] = useState(false)
 
-  const [apiBase, setApiBase] = useState(import.meta.env.VITE_LLM_API_BASE || 'https://api.openai.com/v1')
-  const [modelName, setModelName] = useState(import.meta.env.VITE_MODEL_NAME || 'gpt-4o-mini')
-  const [apiKey, setApiKey] = useState('')
-  const [episodes, setEpisodes] = useState(1)
+  // LLM provider state — OpenAI by default
+  const [provider, setProvider]   = useState('openai')
+  const [modelName, setModelName] = useState('gpt-4o-mini')
+  const [apiKey, setApiKey]       = useState('')
+  const [episodes, setEpisodes]   = useState(1)
 
   const [running, setRunning] = useState(false)
   const [obs, setObs] = useState(null)
@@ -77,7 +106,8 @@ export default function AgentRunner() {
   const setField = (k, v) => setCustom(prev => ({ ...prev, [k]: v }))
 
   async function callLLM(messages) {
-    const res = await fetch(`${apiBase}/chat/completions`, {
+    const baseUrl = PROVIDERS[provider].baseUrl
+    const res = await fetch(`${baseUrl}/chat/completions`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${apiKey}` },
       body: JSON.stringify({ model: modelName, messages, temperature: 0.7, max_tokens: 300 }),
@@ -101,7 +131,7 @@ export default function AgentRunner() {
     setRewardHistory([])
 
     addLog({ step: 0, label: `▶ Episode ${ep} START — ${label}`, type: 'info',
-             message: `${currentObs.job_title} @ ${currentObs.company} | ${currentObs.platform} | deadline: ${currentObs.deadline}d` })
+             message: `${currentObs.job_title} @ ${currentObs.company} | ${currentObs.platform} | deadline: ${currentObs.deadline}d | ${PROVIDERS[provider].label} / ${modelName}` })
 
     const messages = [{ role: 'system', content: SYSTEM_PROMPT }]
     let stepNum = 0
@@ -182,27 +212,63 @@ export default function AgentRunner() {
       {/* LLM Config */}
       <div className="glass rounded-2xl p-5 space-y-4">
         <div className="section-title">Agent Configuration</div>
+
+        {/* Provider selector */}
+        <div>
+          <label className="text-xs text-slate-500 block mb-2">LLM Provider</label>
+          <div className="flex gap-2">
+            {Object.entries(PROVIDERS).map(([key, p]) => (
+              <button key={key}
+                      onClick={() => {
+                        setProvider(key)
+                        setModelName(p.models[0].id)
+                      }}
+                      className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium border transition-all ${
+                        provider === key
+                          ? 'bg-brand-500/20 text-brand-300 border-brand-500/40'
+                          : 'bg-surface-700 text-slate-400 border-white/5 hover:border-white/10 hover:text-slate-200'
+                      }`}>
+                <span>{p.logo}</span>
+                <span>{p.label}</span>
+              </button>
+            ))}
+          </div>
+          <div className="text-[10px] text-slate-600 mt-1.5">
+            API endpoint: <span className="text-slate-500 font-mono">{PROVIDERS[provider].baseUrl}</span>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          {/* Model selector */}
           <div>
-            <label className="text-xs text-slate-500 block mb-1">LLM API Base URL</label>
-            <input value={apiBase} onChange={e => setApiBase(e.target.value)}
-                   className="input w-full text-xs" placeholder="https://api.openai.com/v1" />
+            <label className="text-xs text-slate-500 block mb-1">Model</label>
+            <select value={modelName} onChange={e => setModelName(e.target.value)}
+                    className="input w-full text-xs">
+              {PROVIDERS[provider].models.map(m => (
+                <option key={m.id} value={m.id}>{m.label}</option>
+              ))}
+            </select>
           </div>
-          <div>
-            <label className="text-xs text-slate-500 block mb-1">Model Name</label>
-            <input value={modelName} onChange={e => setModelName(e.target.value)}
-                   className="input w-full text-xs" placeholder="gpt-4o-mini" />
-          </div>
-          <div>
-            <label className="text-xs text-slate-500 block mb-1">API Key</label>
-            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
-                   className="input w-full text-xs" placeholder="sk-…" />
-          </div>
+
+          {/* Episodes */}
           <div>
             <label className="text-xs text-slate-500 block mb-1">Episodes</label>
             <input type="number" min={1} max={20} value={episodes}
                    onChange={e => setEpisodes(Number(e.target.value))}
                    className="input w-full text-xs" />
+          </div>
+
+          {/* API Key — full width */}
+          <div className="md:col-span-2">
+            <label className="text-xs text-slate-500 block mb-1">
+              API Key
+              <span className="text-slate-600 ml-2">
+                ({provider === 'openai' ? 'OpenAI key — starts with sk-' : 'Groq key — starts with gsk_'})
+              </span>
+            </label>
+            <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)}
+                   className="input w-full text-xs"
+                   placeholder={PROVIDERS[provider].keyPlaceholder} />
           </div>
         </div>
 

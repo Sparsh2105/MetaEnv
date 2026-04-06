@@ -468,7 +468,11 @@ The enterprise-grade dark-mode dashboard is served at `http://localhost:3000` an
 - Terminal-style step log
 
 ### Agent Runner
-- Configure any OpenAI-compatible LLM API
+- Configure LLM provider: **OpenAI** or **Groq** — one-click switch
+- Model selector dropdown (auto-populated per provider)
+  - OpenAI: GPT-4o Mini, GPT-4o, GPT-4 Turbo, GPT-3.5 Turbo
+  - Groq: Llama 3.3 70B, Llama 3.1 8B, Mixtral 8x7B, Gemma 2 9B
+- API key input (key never leaves your browser)
 - Run N episodes with live visualization
 - Per-episode scores + average summary
 - Stop mid-run at any time
@@ -478,6 +482,27 @@ The enterprise-grade dark-mode dashboard is served at `http://localhost:3000` an
 - Live "Try it" panel — send real requests inline
 - Complete observation space field reference
 - Python quick-start snippet
+
+---
+
+## 🤖 Supported LLM Providers
+
+The Agent Runner UI supports **OpenAI** and **Groq** out of the box — switch with one click, no config files needed.
+
+| Provider | Base URL | Recommended Model | Speed |
+|---|---|---|---|
+| **OpenAI** (default) | `https://api.openai.com/v1` | `gpt-4o-mini` | Fast |
+| **Groq** | `https://api.groq.com/openai/v1` | `llama-3.3-70b-versatile` | Ultra-fast |
+
+Both use the OpenAI-compatible `/chat/completions` API — your key never leaves the browser.
+
+**Getting a Groq key:** Free at [console.groq.com](https://console.groq.com) — starts with `gsk_`
+
+**Available models in the UI:**
+
+OpenAI: `gpt-4o-mini` · `gpt-4o` · `gpt-4-turbo` · `gpt-3.5-turbo`
+
+Groq: `llama-3.3-70b-versatile` · `llama-3.1-8b-instant` · `mixtral-8x7b-32768` · `gemma2-9b-it`
 
 ---
 
