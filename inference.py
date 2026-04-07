@@ -94,26 +94,12 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
     """Run one episode. Emits START / STEP / END JSON logs. Returns final score."""
 
     # [START] log
-    print(json.dumps({
-        "type": "START",
-        "episode": episode_num,
-        "difficulty": difficulty,
-        "model": MODEL_NAME,
-        "api_base": API_BASE_URL,
-    }), flush=True)
+    print(f"[START] episode={episode_num} difficulty={difficulty} model={MODEL_NAME} api_base={API_BASE_URL}", flush=True)
 
     try:
         obs = reset_env(api_url, difficulty)
     except Exception as e:
-        print(json.dumps({
-            "type": "END",
-            "episode": episode_num,
-            "difficulty": difficulty,
-            "score": 0.0,
-            "total_reward": 0.0,
-            "steps_taken": 0,
-            "terminal_reason": f"reset_failed: {e}",
-        }), flush=True)
+        print(f"[END] episode={episode_num} difficulty={difficulty} score=0.0 total_reward=0.0 steps_taken=0 terminal_reason=reset_failed:{e}", flush=True)
         return 0.0
 
     step_count = 0
@@ -135,21 +121,12 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
             info   = result.get("info", {})
 
             # [STEP] log — strict required format
-            print(json.dumps({
-                "type":         "STEP",
-                "episode":      episode_num,
-                "step":         step_count,
-                "action":       action,
-                "reasoning":    reasoning,
-                "reward":       reward,
-                "total_reward": obs.get("total_reward", 0.0),
-                "done":         obs.get("done", False),
-                "day":          obs.get("day"),
-                "deadline":     obs.get("deadline"),
-                "warning":      info.get("warning"),
-                "penalty":      info.get("penalty"),
-                "event":        info.get("event"),
-            }), flush=True)
+            print(
+                f"[STEP] episode={episode_num} step={step_count} action={action} reward={reward} total_reward={obs.get('total_reward', 0.0)} "
+                f"done={obs.get('done', False)} day={obs.get('day')} deadline={obs.get('deadline')} "
+                f"warning={info.get('warning')} penalty={info.get('penalty')} event={info.get('event')}",
+                flush=True,
+            )
 
             if info.get("final_grade"):
                 final_score    = info["final_grade"]["score"]
@@ -157,27 +134,19 @@ def run_episode(api_url, difficulty="medium", episode_num=1, max_steps=30):
                                            obs.get("terminal_reason", "unknown"))
 
         except Exception as e:
-            print(json.dumps({
-                "type":    "STEP",
-                "episode": episode_num,
-                "step":    step_count,
-                "error":   str(e),
-            }), flush=True)
+            print(f"[STEP] episode={episode_num} step={step_count} action={action} error={e}", flush=True)
             break
 
     if step_count >= max_steps and not obs.get("done", False):
         terminal_reason = "max_steps_reached"
 
     # [END] log — strict required format
-    print(json.dumps({
-        "type":           "END",
-        "episode":        episode_num,
-        "difficulty":     difficulty,
-        "score":          final_score,
-        "total_reward":   obs.get("total_reward", 0.0),
-        "steps_taken":    step_count,
-        "terminal_reason": terminal_reason,
-    }), flush=True)
+    print(
+        f"[END] episode={episode_num} difficulty={difficulty} score={final_score} "
+        f"total_reward={obs.get('total_reward', 0.0)} steps_taken={step_count} "
+        f"terminal_reason={terminal_reason}",
+        flush=True,
+    )
 
     return final_score
 
