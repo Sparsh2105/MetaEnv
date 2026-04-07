@@ -1,12 +1,13 @@
+#!/usr/bin/env python3
 """
 inference.py
 OpenAI-client-based agent for the Job Application RL Environment.
 
 Reads credentials from environment variables:
-  API_BASE_URL  — LLM API endpoint (default: https://api.openai.com/v1)
-  MODEL_NAME    — model identifier  (default: gpt-4o-mini)
-  HF_TOKEN      — Hugging Face / API key (also accepts OPENAI_API_KEY)
-  ENV_API_URL   — RL environment base URL (default: http://localhost:3000)
+  API_BASE_URL - LLM API endpoint (default: https://api.openai.com/v1)
+  MODEL_NAME   - model identifier  (default: gpt-4o-mini)
+  HF_TOKEN     - Hugging Face / API key (also accepts OPENAI_API_KEY)
+  ENV_API_URL  - RL environment base URL (default: http://localhost:3000)
 
 Emits structured stdout logs strictly in JSON [START] / [STEP] / [END] format.
 
