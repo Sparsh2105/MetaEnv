@@ -39,6 +39,8 @@ MAX_STEPS             = 30
 TEMPERATURE           = 0.7
 MAX_TOKENS            = 300
 SUCCESS_SCORE_THRESHOLD = 0.5
+# Max possible reward per episode (interview_secured = 1.0, no time penalty ideal)
+MAX_TOTAL_REWARD      = 1.0
 
 SYSTEM_PROMPT = textwrap.dedent("""
 You are an AI agent playing a job application simulation.
@@ -172,7 +174,10 @@ def run_episode(client: OpenAI, difficulty: str) -> float:
                     error = info["warning"]
 
                 if info.get("final_grade"):
-                    score = info["final_grade"]["score"]
+                    raw_score = info["final_grade"]["score"]
+                    # Normalize and clamp strictly within (0.01, 0.99)
+                    # Validator rejects exact 0.0 and 1.0
+                    score = min(max(raw_score, 0.01), 0.99)
 
             except Exception as e:
                 error = str(e)

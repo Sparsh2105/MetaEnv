@@ -35,7 +35,9 @@ function grade(state) {
     }
   }
 
-  const finalScore = Math.min(base * tailoringMultiplier, 1.0); // cap at 1.0
+  // Clamp strictly within (0.01, 0.99) — validator requires score NOT equal to 0.0 or 1.0
+  const raw = base * tailoringMultiplier;
+  const finalScore = Math.min(Math.max(raw, 0.01), 0.99);
 
   return {
     score: parseFloat(finalScore.toFixed(4)),
