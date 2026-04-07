@@ -6,7 +6,7 @@ description: >
   and platform-specific constraints.
 
 api:
-  base_url: http://localhost:3000
+  base_url: https://sparsh2105-metaenv.hf.space
   endpoints:
     - method: GET
       path: /state

@@ -6,7 +6,7 @@ MANDATORY ENV VARS:
   API_BASE_URL      LLM API endpoint
   MODEL_NAME        Model identifier
   HF_TOKEN          Hugging Face / API key (also accepts OPENAI_API_KEY)
-  ENV_API_URL       RL environment base URL (default: http://localhost:3000)
+  ENV_API_URL       RL environment base URL (default: https://sparsh2105-metaenv.hf.space)
 
 Usage:
     export API_BASE_URL=https://api.openai.com/v1
@@ -26,7 +26,7 @@ from openai import OpenAI
 API_KEY      = os.getenv("HF_TOKEN") or os.getenv("OPENAI_API_KEY", "")
 API_BASE_URL = os.getenv("API_BASE_URL", "https://api.openai.com/v1")
 MODEL_NAME   = os.getenv("MODEL_NAME",   "gpt-4o-mini")
-ENV_API_URL  = os.getenv("ENV_API_URL",  "http://localhost:3000")
+ENV_API_URL  = os.getenv("ENV_API_URL",  "https://sparsh2105-metaenv.hf.space")
 
 BENCHMARK    = "job-application-rl"
 MAX_STEPS    = 30
@@ -146,6 +146,7 @@ def run_episode(difficulty: str, episode_num: int = 1) -> float:
             reasoning = parsed.get("reasoning", "")
 
             last_error = None
+            done = False
             try:
                 result  = env_step(action, skills)
                 obs     = result["observation"]
